@@ -1,0 +1,10 @@
+# Install PyTorch according to your CUDA first if needed, then install these.
+# Qwen3-VL official docs require transformers >= 4.57.0 and recommend qwen-vl-utils.
+torch>=2.6.0
+torchvision>=0.21.0
+transformers>=4.57.0
+accelerate>=1.7.0
+peft>=0.17.1
+deepspeed>=0.17.1
+qwen-vl-utils[decord]>=0.0.14
+flash-attn>=2.7.4.post1; platform_system == "Linux"

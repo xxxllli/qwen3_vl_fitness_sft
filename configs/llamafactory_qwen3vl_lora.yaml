@@ -1,0 +1,46 @@
+### model
+model_name_or_path: Qwen/Qwen3-VL-8B-Instruct
+trust_remote_code: true
+template: qwen3_vl
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target: all
+
+### dataset
+dataset: fitness_trigger_train
+dataset_dir: ./outputs/llamafactory_data
+cutoff_len: 4096
+overwrite_cache: true
+preprocessing_num_workers: 8
+
+### output
+output_dir: ./outputs/qwen3vl_fitness_trigger_lora
+logging_steps: 10
+save_steps: 200
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-5
+num_train_epochs: 2
+lr_scheduler_type: cosine
+warmup_ratio: 0.03
+bf16: true
+ddp_timeout: 180000000
+
+### eval
+val_size: 0.0
+
+### multimodal
+image_max_pixels: 1048576
+video_max_pixels: 1048576
+video_maxlen: 9
+video_fps: 2

@@ -1,0 +1,116 @@
+# Qwen3-VL Fitness Trigger Training Config
+# 目标：把原始 1QnA 标注转成 0.5 秒级 trigger 二分类训练数据。
+
+project:
+  name: fitness_trigger_qwen3vl
+  seed: 42
+
+paths:
+  # 支持：单个 json 文件、目录、glob。例：/data/annotations/**/*.json
+  annotation_glob: /path/to/annotations/**/*.json
+  # 输出目录，会生成 official_json、manifest、stats、video_clips 等
+  output_dir: ./outputs/fitness_trigger_qwen3vl
+  # LLaMA-Factory 数据目录，会生成 train/val/test.json、dataset_info.json、media/、stats/
+  llamafactory_output_dir: ./outputs/llamafactory_data
+  # 原始帧图目录通常在标注里的 video_uid；如果 video_uid 是相对路径，可在这里补根目录。
+  frame_root: ""
+  # 官方 Qwen3-VL 仓库位置；run_official_train 会自动 clone 到这里的父目录下，也可手动 clone。
+  qwen3vl_repo_dir: ./third_party/Qwen3-VL
+
+model:
+  model_name_or_path: Qwen/Qwen3-VL-8B-Instruct
+  output_dir: ./checkpoints/qwen3vl-fitness-trigger-lora
+  cache_dir: ./cache
+
+sample:
+  fps: 2.0
+  step_sec: 0.5
+  window_sec: 4.0
+  cooldown_sec: 4.0
+  # time 是原始长视频绝对时间；如果 clip_images 也是从长视频 0 秒对齐，设 0 即可。
+  # 如果某些 clip 目录是局部时间，需要提供 clip_abs_start_time_field 或 video_start_overrides_csv。
+  default_clip_abs_start_time: 0.0
+  clip_abs_start_time_field: null
+  video_start_overrides_csv: null  # 可选，两列：video_uid,clip_abs_start_time
+  positive_policy: cooldown_effective_only  # cooldown_effective_only | all_positive
+  negative_policy: explicit_resp_type_0_only
+  negative_sample_step_sec: 0.5
+  # 对于冷却期内的重复正样本：ignore，不强行改成 0。
+  cooldown_positive_policy: ignore
+
+media:
+  # video_clip 更贴近 Qwen3-VL 视频输入；multi_image 不生成 mp4，速度快但不如视频模式贴近上线。
+  mode: video_clip  # video_clip | multi_image
+  video_clip_fps: 2
+  video_codec: libx264
+  video_quality: 7
+  image_exts: [".jpg", ".jpeg", ".png", ".webp"]
+  # 如果文件名含数字，默认按最后一个数字排序；否则按文件名排序。
+  filename_number_policy: last_number
+  missing_frame_policy: skip_sample  # skip_sample | raise
+  min_window_frames: 4
+  max_window_frames: 9
+
+split:
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  # 必须按 group 切，避免同视频相邻窗口泄漏。
+  group_key: video_uid
+
+prompt:
+  language: zh
+  template: |
+    你是健身实时指导系统中的 trigger 模型。用户在视频开始时提出了观察要求：
+    【{user_content}】
+
+    现在给你的是截止当前时刻的最近 {window_sec} 秒视频片段，最后一帧就是当前时刻。请判断此刻是否应该触发一次健身指导。
+
+    只输出一个数字：1 表示应该触发指导，0 表示不应该触发指导。不要输出解释，不要输出标点。
+
+train:
+  nproc_per_node: auto
+  num_train_epochs: 2
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-6
+  warmup_ratio: 0.03
+  lr_scheduler_type: cosine
+  weight_decay: 0.01
+  bf16: true
+  model_max_length: 4096
+  logging_steps: 10
+  save_steps: 500
+  save_total_limit: 3
+  lora_enable: true
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  tune_mm_llm: true
+  tune_mm_vision: false
+  tune_mm_mlp: false
+  data_flatten: false
+  data_packing: false
+  video_fps: 2
+  video_max_frames: 9
+  video_min_frames: 4
+  max_pixels: 451584        # 576 * 28 * 28
+  min_pixels: 12544         # 16 * 28 * 28
+  video_max_pixels: 1304576 # 1664 * 28 * 28
+  video_min_pixels: 200704  # 256 * 28 * 28
+  deepspeed_config: deepspeed/zero2.json
+
+infer:
+  adapter_path: ./checkpoints/qwen3vl-fitness-trigger-lora
+  llamafactory_adapter_path: ./outputs/qwen3vl_fitness_trigger_lora
+  split: test
+  max_samples: null
+  threshold: 0.80
+  batch_size: 1
+  use_score_from_logits: true
+  generate_raw_output: true
+
+eval:
+  thresholds: [0.50, 0.60, 0.70, 0.75, 0.80, 0.85, 0.90]
+  cooldown_sec: 4.0
+  event_tolerance_sec: 1.0
